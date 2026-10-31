@@ -57,8 +57,9 @@ def load_model(model: str) -> pd.DataFrame:
     ratings = pd.read_csv(base / "ratings.csv")
     if evidence["post_id"].duplicated().any() or ratings["post_id"].duplicated().any():
         raise ValueError(f"duplicate post_id in {model}")
-    data = evidence[["post_id", "rid", "ccb"]].merge(ratings, on="post_id", validate="one_to_one")
-    numeric = [*ITEMS, *[column for column in ratings if column.endswith("_overall")]]
+    evidence_columns = ["post_id", "stage_index", "rid", "ccb", "breadth_adjusted_density"]
+    data = evidence[evidence_columns].merge(ratings, on="post_id", validate="one_to_one")
+    numeric = [*evidence_columns[1:], *ITEMS, *[column for column in ratings if column.endswith("_overall")]]
     data[numeric] = data[numeric].apply(pd.to_numeric, errors="coerce")
     return data
 
@@ -77,13 +78,14 @@ def mean_impute(data: pd.DataFrame) -> list[pd.DataFrame]:
 
 
 def mice_pmm_impute(
-    data: pd.DataFrame, m: int = 5, seed: int = 20261013, iterations: int = 10, donors: int = 5
+    data: pd.DataFrame, m: int = 5, seed: int = 20261013, iterations: int = 15, donors: int = 5
 ) -> list[pd.DataFrame]:
     scores = data[ITEMS].apply(pd.to_numeric, errors="coerce")
     missing_columns = scores.columns[scores.notna().sum().eq(0)].tolist()
     if missing_columns:
         raise ValueError("variance_insufficient: " + ", ".join(missing_columns))
-    auxiliary = data[["rid", "ccb"]].fillna(data[["rid", "ccb"]].median()).fillna(0.0)
+    auxiliary_columns = ["stage_index", "rid", "ccb", "breadth_adjusted_density"]
+    auxiliary = data[auxiliary_columns].fillna(data[auxiliary_columns].median()).fillna(0.0)
     auxiliary = (auxiliary - auxiliary.mean()) / auxiliary.std(ddof=0).replace(0, 1)
     missing = scores.isna().to_numpy()
     initial = scores.fillna(scores.mean()).to_numpy(float)
@@ -113,10 +115,17 @@ def mice_pmm_impute(
                 variance = float(residual @ residual / rng.chisquare(df))
                 beta = rng.multivariate_normal(beta, variance * inverse, check_valid="ignore")
                 predicted_observed, predicted_missing = xo @ beta, xm @ beta
+                order = np.argsort(predicted_observed)
+                sorted_predictions = predicted_observed[order]
+                sorted_values = y[order]
                 donor_values = np.empty(len(predicted_missing))
                 for i, target in enumerate(predicted_missing):
-                    nearest = np.argsort(np.abs(predicted_observed - target))[:donors]
-                    donor_values[i] = y[rng.choice(nearest)]
+                    position = int(np.searchsorted(sorted_predictions, target))
+                    low = max(0, position - donors)
+                    high = min(len(sorted_predictions), position + donors + 1)
+                    candidates = np.arange(low, high)
+                    nearest = candidates[np.argsort(np.abs(sorted_predictions[candidates] - target))[:donors]]
+                    donor_values[i] = sorted_values[rng.choice(nearest)]
                 completed[miss, j] = donor_values
         result = data.copy()
         result[ITEMS] = np.clip(completed, lower, 7.0)
