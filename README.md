@@ -3,6 +3,7 @@
 ## Structure
 
 ```text
+Technical Appendix 0111.pdf
 post/
   posts.csv
 results/
@@ -24,6 +25,10 @@ analysis/
   fit_cfa.R
   requirements.txt
 ```
+
+## Technical Appendix
+
+[Technical Appendix 0111.pdf](Technical%20Appendix%200111.pdf) provides the methodological details for *When Can Online Narratives Test Organizational Theory? Evidence, Silence, and LLM Choice*. It covers data preparation and construct measures, the 12 LLMs, evidence identification and RID/CCB calculation, item rating, missing-data treatment, SEM and path analyses, model evaluation, robustness checks, planned analyses, reproducibility details, and the full evidence and rating prompts.
 
 ## Data
 
